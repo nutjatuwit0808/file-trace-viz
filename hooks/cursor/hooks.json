@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "hooks": {
+    "beforeSubmitPrompt": [{ "command": "bash ./hooks/cursor/log-prompt.sh" }],
+    "beforeReadFile": [{ "command": "bash ./hooks/cursor/log-file-read.sh" }]
+  }
+}

@@ -1,0 +1,8 @@
+# Session logs contain full prompt/response text — never commit them (plans/phase-1 §risks).
+# Committed test fixtures are the deliberate exception.
+session-*.jsonl
+!parser/test/fixtures/logs/session-*.jsonl
+hook-errors.log
+
+node_modules/
+dist/

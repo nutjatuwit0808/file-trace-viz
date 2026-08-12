@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://filetraceviz.local/schema/log-entry.schema.json",
+  "title": "FileTraceViz log entry (schema_version 1)",
+  "description": "One line of a session-<id>.jsonl file. Every entry shares the base fields; the shape of the rest depends on `event`. Written by the editor hooks (Phase 1), consumed by the log parser (Phase 2).",
+  "type": "object",
+  "properties": {
+    "schema_version": { "const": 1 },
+    "ts": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 UTC timestamp written by the hook"
+    },
+    "session_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Claude Code session_id or Cursor conversation_id, verbatim"
+    },
+    "turn_id": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "1-based turn counter; incremented by the prompt hook on every user prompt"
+    },
+    "tool": { "enum": ["cursor", "claude-code"] },
+    "event": { "enum": ["read", "user_prompt", "agent_response"] }
+  },
+  "required": ["schema_version", "ts", "session_id", "turn_id", "tool", "event"],
+  "oneOf": [
+    {
+      "title": "read",
+      "description": "The agent read a file. file_path is raw as the editor reported it (no normalization in hooks — the Phase 2 mapper owns path matching).",
+      "properties": {
+        "event": { "const": "read" },
+        "file_path": { "type": "string", "minLength": 1 },
+        "agent_id": {
+          "type": ["string", "null"],
+          "description": "null = main agent; set when a subagent read the file (Claude Code only)"
+        },
+        "agent_type": { "type": ["string", "null"] },
+        "generation_id": {
+          "type": ["string", "null"],
+          "description": "Cursor's raw generation id, kept verbatim for debugging"
+        }
+      },
+      "required": ["file_path", "agent_id"]
+    },
+    {
+      "title": "user_prompt",
+      "description": "The user submitted a prompt. text is stored FULL LENGTH by an explicit decision (plans/README.md) — log files must never be committed to git.",
+      "properties": {
+        "event": { "const": "user_prompt" },
+        "text": { "type": "string" }
+      },
+      "required": ["text"]
+    },
+    {
+      "title": "agent_response",
+      "description": "The agent's final text for the turn, extracted from the transcript by the Stop hook. May be absent for a turn (user interrupt, Cursor limitation) — consumers must tolerate that.",
+      "properties": {
+        "event": { "const": "agent_response" },
+        "text": { "type": "string" }
+      },
+      "required": ["text"]
+    }
+  ]
+}

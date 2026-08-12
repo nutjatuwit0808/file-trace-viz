@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<title>FileTraceViz — Glass Graph View</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<style>
+  @property --nc-mid  { syntax: '<color>'; inherits: true; initial-value: #7a7a7a; }
+  @property --nc-edge { syntax: '<color>'; inherits: true; initial-value: #4a4a4a; }
+  @property --lk-color{ syntax: '<color>'; inherits: true; initial-value: rgba(255,255,255,0.13); }
+
+  :root{
+    --bg:#1a1a1c; --panel:#242426; --panel-border:#343436;
+    --text:#dcddde; --text-muted:#8a8a8a; --accent:#8f7dff;
+    --read-now:#ff5a36; --read-earlier:#ffcf40; --never-read:#454b58;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;height:100%;background:radial-gradient(ellipse at 50% 40%,#242426 0%,#161617 75%);
+    color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;overflow:hidden;}
+  #app{position:relative;width:100%;height:100vh;}
+  svg{width:100%;height:100%;display:block;cursor:grab;}
+  svg:active{cursor:grabbing;}
+
+  #topbar{position:absolute;top:12px;left:12px;z-index:10;display:flex;gap:8px;align-items:center;}
+  #search{background:var(--panel);border:1px solid var(--panel-border);color:var(--text);
+    padding:6px 10px;border-radius:6px;font-size:12.5px;width:190px;outline:none;}
+  .pill{background:var(--panel);border:1px solid var(--panel-border);color:var(--text-muted);
+    padding:5px 10px;border-radius:6px;font-size:11.5px;}
+  #modeToggle{display:flex;background:var(--panel);border:1px solid var(--panel-border);
+    border-radius:6px;overflow:hidden;}
+  #modeToggle button{background:transparent;border:none;color:var(--text-muted);
+    padding:6px 12px;font-size:11.5px;cursor:pointer;transition:background .2s,color .2s;}
+  #modeToggle button.active{background:var(--accent);color:#fff;}
+
+  .link{ stroke:var(--lk-color); fill:none;
+    transition: stroke-width .6s ease, opacity .6s ease; }
+
+  .node text{fill:var(--text);font-size:9.5px;pointer-events:none;text-anchor:middle;
+    paint-order:stroke;stroke:var(--bg);stroke-width:3px;opacity:0;transition:opacity .3s ease;}
+  .node.show-label text{opacity:1;}
+  .node.dim{ transition: opacity .4s ease; opacity:0.15; }
+  .node.dim text{opacity:0!important;}
+  .node.focus .rim{stroke:#fff;stroke-width:1.6px;}
+
+  .glass-mid, .glass-edge{ transition: --nc-mid .6s ease, --nc-edge .6s ease; }
+
+  #settings{position:absolute;top:12px;right:12px;width:225px;z-index:10;
+    background:var(--panel);border:1px solid var(--panel-border);border-radius:8px;
+    font-size:12px;overflow:hidden;}
+  #settings h3{margin:0;padding:10px 12px;font-size:12px;font-weight:600;
+    border-bottom:1px solid var(--panel-border);}
+  .settings-section{padding:10px 12px;border-bottom:1px solid var(--panel-border);}
+  .settings-section:last-child{border-bottom:none;}
+  .group-row{display:flex;align-items:center;gap:8px;margin:5px 0;}
+  .swatch{width:11px;height:11px;border-radius:50%;flex-shrink:0;
+    box-shadow: inset -1px -1px 2px rgba(0,0,0,.4), inset 1px 1px 1px rgba(255,255,255,.5);}
+  .group-row span{font-size:11.5px;}
+  .heat-bar{height:10px;border-radius:5px;margin-bottom:6px;}
+  .heat-labels{display:flex;justify-content:space-between;font-size:10.5px;color:var(--text-muted);}
+
+  #sessionbar{position:absolute;bottom:0;left:0;right:0;z-index:10;
+    background:var(--panel);border-top:1px solid var(--panel-border);
+    padding:10px 16px;display:flex;align-items:center;gap:12px;
+    transform:translateY(0);transition:transform .3s ease, opacity .3s ease;}
+  #sessionbar.hidden{transform:translateY(60px);pointer-events:none;opacity:0;}
+  #sessionbar .label{font-size:11.5px;color:var(--text-muted);white-space:nowrap;}
+  #turnLabel{font-size:12px;white-space:nowrap;min-width:230px;}
+  input[type=range]{flex:1;accent-color:var(--accent);height:4px;}
+  #playBtn,#resetZoom{background:var(--panel-border);border:none;color:var(--text);
+    width:26px;height:26px;border-radius:50%;cursor:pointer;font-size:11px;}
+  #resetZoom{position:absolute;bottom:70px;right:12px;z-index:10;width:30px;height:30px;font-size:13px;}
+  #tooltip{position:absolute;pointer-events:none;z-index:20;background:var(--panel);
+    border:1px solid var(--panel-border);padding:6px 9px;border-radius:6px;
+    font-size:11.5px;display:none;}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="topbar">
+    <input id="search" placeholder="Search nodes...">
+    <div id="modeToggle">
+      <button id="modeVault" class="active">Normal</button>
+      <button id="modeSession">Session</button>
+    </div>
+    <div class="pill" id="countPill">— files</div>
+  </div>
+
+  <svg></svg>
+  <div id="tooltip"></div>
+  <button id="resetZoom" title="Zoom to fit">⤢</button>
+
+  <div id="settings">
+    <h3 id="settingsTitle">Groups — folder</h3>
+    <div class="settings-section" id="legendBox"></div>
+  </div>
+
+  <div id="sessionbar" class="hidden">
+    <button id="playBtn">▶</button>
+    <span class="label">Turn</span>
+    <input type="range" id="turnSlider" min="0" max="7" step="1" value="0">
+    <span id="turnLabel"></span>
+  </div>
+</div>
+
+<script>
+const folders=["po","dev","qa","skill","root"];
+const folderColor={po:"#4d8dff",dev:"#2ed67e",qa:"#ffb020",skill:"#ff4da6",root:"#9b6bff"};
+const folderLabel={po:"po/",dev:"dev/",qa:"qa/",skill:"skill/",root:"root"};
+
+const rawNodes=[
+ ["po-pipeline.md","po"],["jira-schema.md","po"],["retro-template.md","po"],
+ ["touchpoints.md","po"],["epic-lead-notes.md","po"],["po-glossary.md","po"],
+ ["dev-grooming.md","dev"],["dev-impl.md","dev"],["dev-commit.md","dev"],
+ ["cursor-rules.md","dev"],["router-pattern.md","dev"],["mcp-tools-schema.md","dev"],
+ ["langgraph-poc.md","dev"],["fraud-review-state.md","dev"],
+ ["qa-checklist.md","qa"],["e2e-evidence.md","qa"],["qa-triage.md","qa"],
+ ["evidence-review.md","qa"],["ac-gate.md","qa"],
+ ["gate-marker-spec.md","skill"],["skill-creator.md","skill"],
+ ["agentic-ops-tracker.md","skill"],["otel-genai-conv.md","skill"],
+ ["a2a-protocol.md","skill"],["eval-methodology.md","skill"],
+ ["AGENTS.md","root"],["obsidian-conventions.md","root"],
+ ["five-layers-framework.md","root"],["sdlc-graph-flow.md","root"],
+];
+const nodes=rawNodes.map(([id,group])=>({id,group}));
+
+const rawLinks=[
+ ["po-pipeline.md","jira-schema.md"],["po-pipeline.md","dev-grooming.md"],
+ ["po-pipeline.md","touchpoints.md"],["po-pipeline.md","retro-template.md"],
+ ["epic-lead-notes.md","po-pipeline.md"],["po-glossary.md","jira-schema.md"],
+ ["dev-grooming.md","dev-impl.md"],["dev-impl.md","dev-commit.md"],
+ ["dev-impl.md","gate-marker-spec.md"],["dev-impl.md","qa-checklist.md"],
+ ["cursor-rules.md","router-pattern.md"],["router-pattern.md","AGENTS.md"],
+ ["dev-impl.md","mcp-tools-schema.md"],["langgraph-poc.md","fraud-review-state.md"],
+ ["langgraph-poc.md","dev-impl.md"],
+ ["qa-checklist.md","e2e-evidence.md"],["qa-checklist.md","qa-triage.md"],
+ ["qa-triage.md","evidence-review.md"],["e2e-evidence.md","ac-gate.md"],
+ ["ac-gate.md","touchpoints.md"],
+ ["gate-marker-spec.md","skill-creator.md"],["skill-creator.md","eval-methodology.md"],
+ ["agentic-ops-tracker.md","otel-genai-conv.md"],["agentic-ops-tracker.md","a2a-protocol.md"],
+ ["agentic-ops-tracker.md","eval-methodology.md"],["skill-creator.md","agentic-ops-tracker.md"],
+ ["AGENTS.md","po-pipeline.md"],["AGENTS.md","dev-grooming.md"],["AGENTS.md","qa-checklist.md"],
+ ["AGENTS.md","cursor-rules.md"],["obsidian-conventions.md","AGENTS.md"],
+ ["five-layers-framework.md","sdlc-graph-flow.md"],["sdlc-graph-flow.md","ac-gate.md"],
+ ["five-layers-framework.md","AGENTS.md"],
+];
+const links=rawLinks.map(([source,target])=>({source,target}));
+document.getElementById("countPill").textContent=nodes.length+" files · "+links.length+" links";
+
+const HEAT_GRAY = "#454b58";   // ไม่เคยอ่าน / โหมดปกติ
+const HEAT_RED  = "#ff2d40";   // อ่านบ่อยที่สุด (deep red)
+const HEAT_CAP  = 4;           // อ่านครบเท่านี้ = แดงเข้มสุด ไม่เข้มไปกว่านี้อีก
+const heatScale = d3.interpolateRgb(HEAT_GRAY, HEAT_RED);
+
+function shade(hex, amt){ return d3.color(hex).darker(amt).formatHex(); }
+function midEdge(hex){ return { mid: hex, edge: shade(hex, 1.0) }; }
+
+// จำนวนครั้งที่ node ถูกอ่านสะสม นับถึง turn ที่ i (รวม turn นั้นด้วย)
+function readCountUpTo(id, i){
+  let c=0;
+  for(let t=0;t<=i;t++) if(turns[t].read.includes(id)) c++;
+  return c;
+}
+function heatColorFor(count){
+  const t = Math.min(1, count/HEAT_CAP) ** 0.6;   // easing: อ่านครั้งแรกก็เห็นสีชัดเจนแล้ว ไม่จางเกินไป
+  return heatScale(t);
+}
+
+const legendBox=document.getElementById("legendBox");
+function renderVaultLegend(){
+  document.getElementById("settingsTitle").textContent="Normal mode";
+  legendBox.innerHTML=`<div class="group-row"><span class="swatch" style="background:${HEAT_GRAY}"></span><span>ไฟล์ทั้งหมด (เทา)</span></div>`;
+}
+function renderSessionLegend(){
+  document.getElementById("settingsTitle").textContent="ความถี่การอ่าน";
+  legendBox.innerHTML=`
+   <div class="heat-bar" style="background:linear-gradient(to right, ${HEAT_GRAY}, ${HEAT_RED})"></div>
+   <div class="heat-labels"><span>ไม่เคยอ่าน</span><span>อ่านบ่อย</span></div>`;
+}
+renderVaultLegend();
+
+const turns=[
+ {label:'Turn 1 — "อธิบาย pipeline PO"', read:["po-pipeline.md","jira-schema.md","AGENTS.md","touchpoints.md"]},
+ {label:'Turn 2 — "สร้าง dev grooming skill"', read:["dev-grooming.md","dev-impl.md","cursor-rules.md","AGENTS.md"]},
+ {label:'Turn 3 — "เช็ค GATE marker spec"', read:["gate-marker-spec.md","skill-creator.md","AGENTS.md"]},
+ {label:'Turn 4 — "ทำ QA checklist"', read:["qa-checklist.md","ac-gate.md","AGENTS.md"]},
+ {label:'Turn 5 — "เพิ่ม e2e evidence gate"', read:["e2e-evidence.md","qa-triage.md","evidence-review.md","qa-checklist.md"]},
+ {label:'Turn 6 — "LangGraph fraud POC"', read:["langgraph-poc.md","fraud-review-state.md","mcp-tools-schema.md","AGENTS.md"]},
+ {label:'Turn 7 — "audit agentic ops tracker"', read:["agentic-ops-tracker.md","eval-methodology.md","a2a-protocol.md","po-pipeline.md"]},
+ {label:'Turn 8 — "สรุป retro"', read:["retro-template.md","po-pipeline.md","five-layers-framework.md","AGENTS.md"]},
+];
+let cumulativeRead=new Set();
+let mode="vault";
+
+const svg=d3.select("svg");
+const defs=svg.append("defs");
+const filt=defs.append("filter").attr("id","glassShadow").attr("x","-60%").attr("y","-60%").attr("width","220%").attr("height","220%");
+filt.append("feDropShadow").attr("dx",0).attr("dy",1.5).attr("stdDeviation",1.8).attr("flood-color","#000").attr("flood-opacity",0.55);
+
+const g=svg.append("g");
+const zoom=d3.zoom().scaleExtent([0.2,5]).on("zoom", e=>g.attr("transform",e.transform));
+svg.call(zoom);
+
+const degree={}; nodes.forEach(n=>degree[n.id]=0);
+links.forEach(l=>{degree[l.source]++; degree[l.target]++;});
+function rOf(d){ return 6 + degree[d.id]*2.1; }
+
+const W=window.innerWidth, H=window.innerHeight;
+const clusterCenters={
+  po:{x:W*0.28,y:H*0.32}, dev:{x:W*0.68,y:H*0.28}, qa:{x:W*0.72,y:H*0.68},
+  skill:{x:W*0.30,y:H*0.72}, root:{x:W*0.5,y:H*0.5},
+};
+
+const sim=d3.forceSimulation(nodes)
+  .force("link", d3.forceLink(links).id(d=>d.id).distance(78).strength(0.5))
+  .force("charge", d3.forceManyBody().strength(-260))
+  .force("collide", d3.forceCollide(d=>rOf(d)+3))
+  .force("x", d3.forceX(d=>clusterCenters[d.group].x).strength(0.06))
+  .force("y", d3.forceY(d=>clusterCenters[d.group].y).strength(0.06))
+  .alphaDecay(0.02)
+  .velocityDecay(0.45);
+
+sim.stop();
+for(let i=0;i<180;i++) sim.tick();
+
+const nodeGrad = defs.selectAll("radialGradient.nodeGrad").data(nodes).join("radialGradient")
+  .attr("class","nodeGrad")
+  .attr("id", d=>"grad-"+cssId(d.id))
+  .attr("cx","35%").attr("cy","28%").attr("r","75%");
+nodeGrad.append("stop").attr("offset","0%").attr("stop-color","#ffffff").attr("stop-opacity",0.95);
+nodeGrad.append("stop").attr("class","glass-mid").attr("offset","55%")
+  .attr("style", "stop-color:var(--nc-mid); transition: stop-color .6s ease;");
+nodeGrad.append("stop").attr("class","glass-edge").attr("offset","100%")
+  .attr("style", "stop-color:var(--nc-edge); transition: stop-color .6s ease;");
+
+function cssId(id){ return id.replace(/[^a-zA-Z0-9]/g,"_"); }
+
+const linkSel=g.append("g").selectAll("line").data(links).join("line")
+  .attr("class","link")
+  .attr("stroke-width",1)
+  .attr("x1",d=>d.source.x).attr("y1",d=>d.source.y)
+  .attr("x2",d=>d.target.x).attr("y2",d=>d.target.y)
+  .attr("opacity",0);
+
+const nodeSel=g.append("g").selectAll("g.node").data(nodes).join("g")
+  .attr("class","node")
+  .attr("transform", d=>`translate(${d.x},${d.y})`)
+  .call(d3.drag()
+    .on("start",(e,d)=>{
+      if(!e.active) sim.alphaTarget(0.25).restart();
+      d.fx=d.x; d.fy=d.y;
+      linkSel.attr("stroke-dasharray", null).attr("stroke-dashoffset", null);
+    })
+    .on("drag",(e,d)=>{ d.fx=e.x; d.fy=e.y; })
+    .on("end",(e,d)=>{ if(!e.active) sim.alphaTarget(0); d.fx=null; d.fy=null; }));
+
+nodeSel.append("circle").attr("class","rim")
+  .attr("r", d=>rOf(d))
+  .attr("fill", d=>"url(#grad-"+cssId(d.id)+")")
+  .attr("filter","url(#glassShadow)")
+  .attr("stroke","rgba(255,255,255,0.25)").attr("stroke-width",0.8)
+  .attr("opacity",0);
+
+nodeSel.append("ellipse")
+  .attr("cx", d=>-rOf(d)*0.32).attr("cy", d=>-rOf(d)*0.35)
+  .attr("rx", d=>rOf(d)*0.32).attr("ry", d=>rOf(d)*0.20)
+  .attr("fill","white").attr("opacity",0).style("pointer-events","none");
+
+nodeSel.append("text")
+  .attr("dy", d=>rOf(d)+11)
+  .text(d=>d.id.replace(".md",""));
+nodeSel.classed("show-label", d=>degree[d.id]>=3);
+
+linkSel.style("--lk-color","rgba(255,255,255,0.13)")
+  .each(function(d){
+    const len=Math.hypot(d.target.x-d.source.x, d.target.y-d.source.y);
+    d3.select(this).attr("stroke-dasharray", len).attr("stroke-dashoffset", len);
+  })
+  .transition().delay((d,i)=>i*22).duration(650).ease(d3.easeCubicOut)
+  .attr("stroke-dashoffset",0).attr("opacity",1)
+  .style("--lk-color","#8f7dff")
+  .on("end", function(){
+    d3.select(this).attr("stroke-dasharray", null).attr("stroke-dashoffset", null);
+    applyLinkColors();
+  });
+
+nodeSel.select("circle.rim")
+  .attr("r", 0)
+  .transition().delay((d,i)=>250+i*18).duration(500).ease(d3.easeBackOut.overshoot(1.4))
+  .attr("opacity",1).attr("r", d=>rOf(d));
+nodeSel.select("ellipse")
+  .transition().delay((d,i)=>400+i*18).duration(500)
+  .attr("opacity",0.55);
+
+nodes.forEach(d=>{ const {mid,edge}=midEdge(HEAT_GRAY);
+  defs.selectAll("radialGradient.nodeGrad").filter(n=>n.id===d.id)
+    .style("--nc-mid", mid).style("--nc-edge", edge);
+});
+
+const tooltip=d3.select("#tooltip");
+let focusedId=null;
+
+nodeSel.on("mouseenter",(e,d)=>{
+  highlightNeighborhood(d.id);
+  tooltip.style("display","block").text(d.id+"  ·  "+degree[d.id]+" links  ·  "+folderLabel[d.group]);
+}).on("mousemove",e=>{
+  tooltip.style("left",(e.pageX+14)+"px").style("top",(e.pageY+10)+"px");
+}).on("mouseleave",()=>{
+  if(!focusedId) clearHighlight();
+  tooltip.style("display","none");
+}).on("dblclick",(e,d)=>{
+  focusedId = focusedId===d.id ? null : d.id;
+  if(focusedId){ highlightNeighborhood(focusedId); panTo(d); } else clearHighlight();
+});
+
+function highlightNeighborhood(id){
+  const neigh=new Set([id]);
+  links.forEach(l=>{ if(l.source.id===id) neigh.add(l.target.id); if(l.target.id===id) neigh.add(l.source.id); });
+  nodeSel.classed("dim", n=>!neigh.has(n.id))
+    .classed("show-label", n=>neigh.has(n.id)||degree[n.id]>=3)
+    .classed("focus", n=>n.id===id);
+  linkSel.style("--lk-color", l => (l.source.id===id||l.target.id===id) ? "#a89bff" : "rgba(255,255,255,0.13)")
+    .style("opacity", l => (l.source.id===id||l.target.id===id) ? 1 : 0.25);
+}
+function clearHighlight(){
+  nodeSel.classed("dim",false).classed("focus",false).classed("show-label", d=>degree[d.id]>=3);
+  linkSel.style("--lk-color", l=>linkColorFor(l)).style("opacity",1);
+}
+function panTo(d){
+  const t=d3.zoomTransform(svg.node()); const scale=Math.max(t.k,1.6);
+  svg.transition().duration(600).ease(d3.easeCubicInOut).call(zoom.transform,
+    d3.zoomIdentity.translate(W/2-d.x*scale, H/2-d.y*scale).scale(scale));
+}
+
+sim.on("tick", ()=>{
+  linkSel.attr("x1",d=>d.source.x).attr("y1",d=>d.source.y).attr("x2",d=>d.target.x).attr("y2",d=>d.target.y);
+  nodeSel.attr("transform", d=>`translate(${d.x},${d.y})`);
+});
+
+function gradVars(d){
+  if(mode!=="session") return midEdge(HEAT_GRAY);          // โหมดปกติ: เทาล้วน ไม่มีสีอื่น
+  const count = readCountUpTo(d.id, +slider.value);
+  return midEdge(heatColorFor(count));                     // ยิ่งอ่านบ่อย ยิ่งแดงเข้ม
+}
+function linkColorFor(l){
+  if(mode!=="session") return "rgba(255,255,255,0.13)";
+  const cs = readCountUpTo(l.source.id, +slider.value);
+  const ct = readCountUpTo(l.target.id, +slider.value);
+  const count = Math.max(cs, ct);
+  if(count===0) return "rgba(255,255,255,0.13)";
+  return heatColorFor(count);
+}
+function applyLinkColors(){
+  linkSel.transition().duration(550).style("--lk-color", l=>linkColorFor(l));
+}
+
+function refreshColors(){
+  nodes.forEach(d=>{
+    const {mid,edge}=gradVars(d);
+    defs.selectAll("radialGradient.nodeGrad").filter(n=>n.id===d.id)
+      .style("--nc-mid", mid).style("--nc-edge", edge);
+  });
+  applyLinkColors();
+}
+
+const slider=document.getElementById("turnSlider");
+const turnLabel=document.getElementById("turnLabel");
+slider.max=turns.length-1;
+function setTurn(i){
+  cumulativeRead=new Set();
+  for(let t=0;t<i;t++) turns[t].read.forEach(f=>cumulativeRead.add(f));
+  slider.value=i; turnLabel.textContent=turns[i].label;
+  refreshColors();
+}
+slider.addEventListener("input", ()=> setTurn(+slider.value));
+
+let playing=false, playTimer=null;
+document.getElementById("playBtn").addEventListener("click",(e)=>{
+  playing=!playing; e.target.textContent=playing?"⏸":"▶";
+  if(playing) playTimer=setInterval(()=> setTurn((+slider.value+1)%turns.length),1600);
+  else clearInterval(playTimer);
+});
+
+const btnVault=document.getElementById("modeVault"), btnSession=document.getElementById("modeSession");
+const sessionbar=document.getElementById("sessionbar");
+btnVault.addEventListener("click",()=>{
+  mode="vault"; btnVault.classList.add("active"); btnSession.classList.remove("active");
+  sessionbar.classList.add("hidden"); renderVaultLegend(); refreshColors();
+});
+btnSession.addEventListener("click",()=>{
+  mode="session"; btnSession.classList.add("active"); btnVault.classList.remove("active");
+  sessionbar.classList.remove("hidden"); renderSessionLegend(); setTurn(0);
+});
+
+document.getElementById("search").addEventListener("input",(e)=>{
+  const q=e.target.value.toLowerCase().trim();
+  if(!q){ clearHighlight(); return; }
+  const matched=new Set(nodes.filter(n=>n.id.toLowerCase().includes(q)).map(n=>n.id));
+  nodeSel.classed("dim", n=>!matched.has(n.id)).classed("show-label", n=>matched.has(n.id));
+  linkSel.style("opacity",0.15);
+});
+
+document.getElementById("resetZoom").addEventListener("click", ()=>{
+  svg.transition().duration(500).ease(d3.easeCubicInOut).call(zoom.transform, d3.zoomIdentity);
+});
+</script>
+</body>
+</html>

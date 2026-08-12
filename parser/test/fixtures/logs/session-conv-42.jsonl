@@ -1,0 +1,5 @@
+{"schema_version":1,"ts":"2026-08-11T14:00:00Z","session_id":"conv-42","turn_id":1,"tool":"cursor","event":"user_prompt","text":"refactor สี heat-scale หน่อย"}
+{"schema_version":1,"ts":"2026-08-11T14:00:02Z","session_id":"conv-42","turn_id":1,"tool":"cursor","event":"read","file_path":"C:\\Users\\User\\OneDrive\\เอกสาร\\vault\\po\\po-pipeline.md","agent_id":null,"generation_id":"gen-aa1"}
+{"schema_version":1,"ts":"2026-08-11T14:00:03Z","session_id":"conv-42","turn_id":1,"tool":"cursor","event":"read","file_path":"C:\\Users\\User\\OneDrive\\เอกสาร\\vault\\AGENTS.md","agent_id":null,"generation_id":"gen-aa1"}
+{"schema_version":1,"ts":"2026-08-11T14:05:00Z","session_id":"conv-42","turn_id":2,"tool":"cursor","event":"user_prompt","text":"ok ต่อด้วย tests"}
+{"schema_version":1,"ts":"2026-08-11T14:05:04Z","session_id":"conv-42","turn_id":2,"tool":"cursor","event":"read","file_path":"C:\\Users\\User\\OneDrive\\เอกสาร\\vault\\qa\\qa-checklist.md","agent_id":null,"generation_id":"gen-bb2"}

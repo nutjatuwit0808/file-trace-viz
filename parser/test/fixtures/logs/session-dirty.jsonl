@@ -1,0 +1,7 @@
+{"schema_version":1,"ts":"2026-08-10T09:00:00Z","session_id":"dirty-1","turn_id":1,"tool":"claude-code","event":"user_prompt","text":"multiline\nprompt with \"quotes\" and 🐛"}
+this line is not json
+{"schema_version":99,"ts":"2026-08-10T09:00:01Z","session_id":"dirty-1","turn_id":1,"tool":"claude-code","event":"read","file_path":"C:\\vault\\AGENTS.md","agent_id":null}
+{"schema_version":1,"ts":"2026-08-10T09:00:02Z","session_id":"dirty-1","turn_id":1,"tool":"claude-code","event":"instructions_loaded","file_path":"C:\\vault\\CLAUDE.md"}
+{"schema_version":1,"ts":"2026-08-10T09:00:03Z","session_id":"dirty-1","turn_id":1,"tool":"claude-code","event":"read","agent_id":null}
+{"schema_version":1,"ts":"2026-08-10T09:00:04Z","session_id":"dirty-1","turn_id":1,"tool":"claude-code","event":"read","file_path":"C:\\Users\\User\\OneDrive\\เอกสาร\\vault\\notes.md","agent_id":null}
+{"schema_version":1,"ts":"2026-08-10T09:00:05Z","session_id":"dirty-1","turn_id":1,"tool":"claude-code","event":"agent_response","text":"done"}

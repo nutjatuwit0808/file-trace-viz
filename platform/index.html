@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<title>FileTraceViz</title>
+<style>
+  @property --nc-mid  { syntax: '<color>'; inherits: true; initial-value: #7a7a7a; }
+  @property --nc-edge { syntax: '<color>'; inherits: true; initial-value: #4a4a4a; }
+  @property --lk-color{ syntax: '<color>'; inherits: true; initial-value: rgba(255,255,255,0.13); }
+
+  :root{
+    --bg:#1a1a1c; --panel:#242426; --panel-border:#343436;
+    --text:#dcddde; --text-muted:#8a8a8a; --accent:#8f7dff;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;height:100%;background:radial-gradient(ellipse at 50% 40%,#242426 0%,#161617 75%);
+    color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;overflow:hidden;}
+  #app{position:relative;width:100%;height:100vh;}
+  svg{width:100%;height:100%;display:block;cursor:grab;}
+  svg:active{cursor:grabbing;}
+
+  #topbar{position:absolute;top:12px;left:12px;z-index:10;display:flex;gap:8px;align-items:center;}
+  #search{background:var(--panel);border:1px solid var(--panel-border);color:var(--text);
+    padding:6px 10px;border-radius:6px;font-size:12.5px;width:190px;outline:none;}
+  .pill{background:var(--panel);border:1px solid var(--panel-border);color:var(--text-muted);
+    padding:5px 10px;border-radius:6px;font-size:11.5px;}
+  #modeToggle{display:flex;background:var(--panel);border:1px solid var(--panel-border);
+    border-radius:6px;overflow:hidden;}
+  #modeToggle button{background:transparent;border:none;color:var(--text-muted);
+    padding:6px 12px;font-size:11.5px;cursor:pointer;transition:background .2s,color .2s;}
+  #modeToggle button.active{background:var(--accent);color:#fff;}
+  #reloadBtn{display:none;cursor:pointer;}
+  #warningsPill{display:none;cursor:pointer;color:#ffb020;}
+  #warningsList{display:none;position:absolute;top:44px;left:12px;z-index:30;max-width:420px;
+    max-height:50vh;overflow:auto;background:var(--panel);border:1px solid var(--panel-border);
+    border-radius:8px;padding:10px 12px;font-size:11.5px;}
+  .warnings-title{font-weight:600;margin-bottom:6px;}
+  .warning-row{color:var(--text-muted);padding:2px 0;border-top:1px solid var(--panel-border);}
+
+  .link{ stroke:var(--lk-color); fill:none;
+    transition: stroke-width .6s ease, opacity .6s ease; }
+
+  .node text{fill:var(--text);font-size:9.5px;pointer-events:none;text-anchor:middle;
+    paint-order:stroke;stroke:var(--bg);stroke-width:3px;opacity:0;transition:opacity .3s ease;}
+  .node.show-label text{opacity:1;}
+  .node.dim{ transition: opacity .4s ease; opacity:0.15; }
+  .node.dim text{opacity:0!important;}
+  .node.focus .rim{stroke:#fff;stroke-width:1.6px;}
+
+  .glass-mid, .glass-edge{ transition: --nc-mid .6s ease, --nc-edge .6s ease; }
+
+  #settings{position:absolute;top:12px;right:52px;width:225px;z-index:10;
+    background:var(--panel);border:1px solid var(--panel-border);border-radius:8px;
+    font-size:12px;overflow:hidden;transition:right .3s ease;}
+  #sessionPanel:not(.collapsed) ~ #settings{right:372px;}
+  #settings h3{margin:0;padding:10px 12px;font-size:12px;font-weight:600;
+    border-bottom:1px solid var(--panel-border);}
+  .settings-section{padding:10px 12px;border-bottom:1px solid var(--panel-border);}
+  .settings-section:last-child{border-bottom:none;}
+  .group-row{display:flex;align-items:center;gap:8px;margin:5px 0;}
+  .swatch{width:11px;height:11px;border-radius:50%;flex-shrink:0;
+    box-shadow: inset -1px -1px 2px rgba(0,0,0,.4), inset 1px 1px 1px rgba(255,255,255,.5);}
+  .group-row span{font-size:11.5px;}
+  .heat-bar{height:10px;border-radius:5px;margin-bottom:6px;}
+  .heat-labels{display:flex;justify-content:space-between;font-size:10.5px;color:var(--text-muted);}
+
+  #sessionbar{position:absolute;bottom:0;left:0;right:0;z-index:10;
+    background:var(--panel);border-top:1px solid var(--panel-border);
+    padding:10px 16px;display:flex;align-items:center;gap:12px;
+    transform:translateY(0);transition:transform .3s ease, opacity .3s ease;}
+  #sessionbar.hidden{transform:translateY(60px);pointer-events:none;opacity:0;}
+  #sessionbar .label{font-size:11.5px;color:var(--text-muted);white-space:nowrap;}
+  #turnLabel{font-size:12px;white-space:nowrap;min-width:230px;overflow:hidden;text-overflow:ellipsis;}
+  input[type=range]{flex:1;accent-color:var(--accent);height:4px;}
+  #playBtn,#resetZoom{background:var(--panel-border);border:none;color:var(--text);
+    width:26px;height:26px;border-radius:50%;cursor:pointer;font-size:11px;}
+  #resetZoom{position:absolute;bottom:70px;right:12px;z-index:10;width:30px;height:30px;font-size:13px;}
+  #tooltip{position:absolute;pointer-events:none;z-index:20;background:var(--panel);
+    border:1px solid var(--panel-border);padding:6px 9px;border-radius:6px;
+    font-size:11.5px;display:none;}
+
+  /* ---- Session panel (Phase 4.3): float right, collapsible, dark glass ---- */
+  #sessionPanel{position:absolute;top:0;right:0;bottom:0;width:340px;z-index:15;
+    background:rgba(36,36,38,0.92);backdrop-filter:blur(6px);
+    border-left:1px solid var(--panel-border);display:flex;flex-direction:column;
+    transition:transform .3s ease;}
+  #sessionPanel.collapsed{transform:translateX(340px);}
+  #panelToggle{position:absolute;top:50%;left:-26px;transform:translateY(-50%);
+    width:26px;height:64px;border:1px solid var(--panel-border);border-right:none;
+    border-radius:8px 0 0 8px;background:var(--panel);color:var(--text-muted);
+    cursor:pointer;font-size:11px;}
+  #panelHeader{display:flex;align-items:center;gap:8px;padding:12px;font-size:13px;
+    font-weight:600;border-bottom:1px solid var(--panel-border);}
+  .pill-mini{background:var(--panel-border);border-radius:10px;padding:1px 8px;
+    font-size:11px;font-weight:400;color:var(--text-muted);}
+  #sessionList,#conversation{flex:1;overflow-y:auto;padding:10px;}
+  #conversation{display:none;}
+  .session-row{display:block;width:100%;text-align:left;background:var(--panel);
+    border:1px solid var(--panel-border);border-radius:8px;padding:10px;margin-bottom:8px;
+    color:var(--text);cursor:pointer;font-family:inherit;}
+  .session-row:hover{border-color:var(--accent);}
+  .session-row-top{display:flex;align-items:center;gap:8px;margin-bottom:5px;}
+  .badge{font-size:9.5px;text-transform:uppercase;letter-spacing:.4px;border-radius:4px;
+    padding:2px 6px;font-weight:600;}
+  .badge-cursor{background:#2b3a55;color:#7fb3ff;}
+  .badge-claude-code{background:#4a3520;color:#ffb570;}
+  .session-ts{font-size:11px;color:var(--text-muted);}
+  .session-turns{font-size:11px;color:var(--text-muted);margin-left:auto;}
+  .session-preview{font-size:12px;color:var(--text);display:-webkit-box;
+    -webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
+  .empty-note{color:var(--text-muted);font-size:12px;text-align:center;padding:20px 0;}
+  .back-btn{background:none;border:none;color:var(--text);cursor:pointer;font-size:14px;padding:0 4px;}
+
+  .turn-card{background:var(--panel);border:1px solid var(--panel-border);border-radius:8px;
+    padding:9px;margin-bottom:8px;cursor:pointer;}
+  .turn-card.active{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent);}
+  .turn-head{font-size:10.5px;color:var(--text-muted);margin-bottom:6px;}
+  .msg{border-radius:6px;padding:6px 8px;margin-top:5px;font-size:12px;line-height:1.45;}
+  .msg.user{background:#2d2d40;}
+  .msg.agent{background:#26302a;}
+  .msg-body{white-space:pre-wrap;word-break:break-word;cursor:pointer;}
+  .msg-body.clamped{display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden;}
+  .placeholder{color:var(--text-muted);font-style:italic;}
+
+  /* ---- Empty state (Phase 4.2): first-open folder pickers ---- */
+  #emptyState{position:absolute;inset:0;z-index:40;display:flex;align-items:center;
+    justify-content:center;background:radial-gradient(ellipse at 50% 40%,#242426 0%,#161617 75%);}
+  .empty-card{width:400px;background:var(--panel);border:1px solid var(--panel-border);
+    border-radius:12px;padding:28px;text-align:center;}
+  .empty-card h1{font-size:19px;margin:0 0 6px;}
+  .empty-card p{font-size:12.5px;color:var(--text-muted);margin:0 0 18px;line-height:1.5;}
+  .empty-card button{display:block;width:100%;margin-bottom:10px;background:var(--panel-border);
+    border:1px solid var(--panel-border);color:var(--text);padding:10px;border-radius:8px;
+    font-size:13px;cursor:pointer;font-family:inherit;}
+  .empty-card button:hover{border-color:var(--accent);}
+  .empty-card button#startBtn{background:var(--accent);color:#fff;}
+  .empty-card button:disabled{opacity:.45;cursor:default;}
+  .demo-link{font-size:12px;color:var(--accent);}
+  #unsupported,#loadError{display:none;color:#ff7a6b;font-size:12.5px;margin-top:12px;line-height:1.5;}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="topbar">
+    <input id="search" placeholder="Search nodes...">
+    <div id="modeToggle">
+      <button id="modeVault" class="active">Normal</button>
+      <button id="modeSession">Session</button>
+    </div>
+    <div class="pill" id="countPill">— files</div>
+    <div class="pill" id="reloadBtn" title="อ่านข้อมูลซ้ำจาก folder เดิม">↻ reload</div>
+    <div class="pill" id="warningsPill"></div>
+  </div>
+  <div id="warningsList"></div>
+
+  <svg></svg>
+  <div id="tooltip"></div>
+  <button id="resetZoom" title="Zoom to fit">⤢</button>
+
+  <div id="sessionPanel" class="collapsed">
+    <button id="panelToggle">◀</button>
+    <div id="panelHeader"><span>Sessions</span></div>
+    <div id="sessionList"></div>
+    <div id="conversation"></div>
+  </div>
+
+  <div id="settings">
+    <h3 id="settingsTitle">Normal mode</h3>
+    <div class="settings-section" id="legendBox"></div>
+  </div>
+
+  <div id="sessionbar" class="hidden">
+    <button id="playBtn">▶</button>
+    <span class="label">Turn</span>
+    <input type="range" id="turnSlider" min="0" max="7" step="1" value="0">
+    <span id="turnLabel"></span>
+  </div>
+
+  <div id="emptyState">
+    <div class="empty-card">
+      <h1>FileTraceViz</h1>
+      <p>เลือก folder ของ vault (.md) และ folder ของ session log (.jsonl)<br>
+         เพื่อดูว่าแต่ละ turn agent อ่านไฟล์ไหนบ้าง</p>
+      <div id="pickers">
+        <button id="pickVault">📁 เลือก vault folder</button>
+        <button id="pickLogs">🗒️ เลือก log folder (~/.filetraceviz/logs)</button>
+        <button id="startBtn" disabled>เปิดกราฟ</button>
+      </div>
+      <a class="demo-link" href="?demo=1">หรือลองดู demo ด้วย mock data →</a>
+      <div id="unsupported">เบราว์เซอร์นี้ไม่รองรับ File System Access API —
+        ใช้ Chrome หรือ Edge (โปรเจคนี้ต้องการ CSS @property อยู่แล้ว)</div>
+      <div id="loadError"></div>
+    </div>
+  </div>
+</div>
+
+<script type="module" src="dist/bundle.js"></script>
+</body>
+</html>

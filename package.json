@@ -1,0 +1,26 @@
+{
+  "name": "filetraceviz",
+  "version": "0.1.0",
+  "description": "Replay which vault files your coding agent read on every turn — Obsidian-style graph with a read-frequency heat scale",
+  "type": "module",
+  "bin": {
+    "filetraceviz": "bin/filetraceviz.js"
+  },
+  "files": [
+    "bin/",
+    "platform/index.html",
+    "platform/dist/",
+    "platform/fixtures/",
+    "hooks/",
+    "schema/"
+  ],
+  "scripts": {
+    "build": "npm --prefix platform run build",
+    "test": "npm --prefix parser test",
+    "start": "node bin/filetraceviz.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "MIT"
+}
